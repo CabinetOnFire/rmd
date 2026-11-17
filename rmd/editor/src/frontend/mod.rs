@@ -633,7 +633,7 @@ impl UiState {
             &mut panels.inspector,
         );
         self.select_inspector.after_draw(inspector.docked);
-        self.copy_to_clipboard = inspector.copy_hash.or(object_tree.copy_path);
+        self.copy_to_clipboard = inspector.copy.or(object_tree.copy_path);
         if let Some((document, instance)) = inspector.find_similar {
             self.find
                 .open_for(session, document, instance, SimilarMatchKind::Prefab);

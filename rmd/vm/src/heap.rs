@@ -1,4 +1,4 @@
-use base::{bitset::BitIndex, interner::SymbolMap};
+use base::{bitset::BitIndex, interner::SymbolMap, types::Identifier, vars};
 use std::collections::HashMap;
 
 use objtree::{SharedVarId, TypeId};
@@ -70,6 +70,15 @@ impl Object {
     }
 }
 
+/// What an `/icon` draws. `icon(file, state, dir)` keeps only that state and dir, so they draw
+/// whatever the appearance holding the icon asks for.
+#[derive(Debug, Default)]
+pub struct IconSource<'a> {
+    pub file: Option<&'a GenericValue>,
+    pub icon_state: Option<&'a GenericValue>,
+    pub dir: Option<&'a GenericValue>,
+}
+
 #[derive(Debug, Default)]
 pub struct Heap {
     pub(crate) objects: Vec<Object>,
@@ -95,6 +104,35 @@ impl Heap {
             .enumerate()
             .filter(|(_, o)| !o.deleted)
             .map(|(i, o)| (ObjectId(i as u32), o))
+    }
+
+    /// `icon(icon(file, state))` nests, and the outermost kept state or dir wins
+    pub fn icon_source(&self, mut id: ObjectId) -> IconSource<'_> {
+        let [icon, icon_state, dir] = [vars::ICON, vars::ICON_STATE, vars::DIR].map(Identifier::from);
+        let mut source = IconSource::default();
+        for _ in 0..8 {
+            let Some(object) = self.object(id) else {
+                break;
+            };
+
+            let kept = |name| {
+                object
+                    .vars
+                    .get(name)
+                    .filter(|value| !matches!(value, GenericValue::Null))
+            };
+            source.icon_state = source.icon_state.or_else(|| kept(&icon_state));
+            source.dir = source.dir.or_else(|| kept(&dir));
+            match object.vars.get(&icon) {
+                Some(GenericValue::Object(inner)) => id = *inner,
+                file => {
+                    source.file = file;
+                    break;
+                },
+            }
+        }
+
+        source
     }
 
     pub fn alloc_object(&mut self, object: Object) -> Result<ObjectId, FaultKind> {

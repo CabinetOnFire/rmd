@@ -20,10 +20,10 @@ use super::{
     ADVANCED_OFFSETS, DISPLAY_ROWS, TransformMode,
     property::{draw_identical_banner, identical_frame_colors, property_table},
     snapshot::{
-        InspectorProperty, InspectorSnapshot, InspectorVariable, inspector_snapshot, list_entry_drafts,
+        InspectorProperty, InspectorSnapshot, InspectorVariable, VariableGroup, inspector_snapshot, list_entry_drafts,
         typed_value_text,
     },
-    variable::draw_variable_rows,
+    variable::{draw_pin, draw_variable_rows, toggle_pin},
 };
 
 #[derive(Default)]
@@ -75,7 +75,7 @@ pub(super) struct ListEntryDraft {
 pub(crate) struct InspectorOutput {
     pub open_source: Option<SourceLocation>,
     pub find_similar: bool,
-    pub copy_hash: Option<String>,
+    pub copy: Option<String>,
 }
 
 impl InspectorState {
@@ -83,7 +83,9 @@ impl InspectorState {
         self.transform_mode
     }
 
-    pub fn draw(&mut self, ui: &Ui, session: &mut Session, pins: &mut Vec<String>) -> InspectorOutput {
+    pub fn draw(
+        &mut self, ui: &Ui, session: &mut Session, pinned_vars: &mut Vec<String>, pinned_types: &mut Vec<String>,
+    ) -> InspectorOutput {
         let Some(snapshot) = inspector_snapshot(session) else {
             self.clear();
             ui.text_disabled("No object selected");
@@ -92,10 +94,6 @@ impl InspectorState {
         };
 
         self.sync(&snapshot);
-        ui.text_disabled(format!(
-            "Tile {}, {}, {}",
-            snapshot.location.coord.x, snapshot.location.coord.y, snapshot.location.coord.z
-        ));
         let find_similar = ui.text_link("Find similar...");
         let is_preview = snapshot.picked.get() >= PREVIEW_ID_START;
         if is_preview {
@@ -123,7 +121,7 @@ impl InspectorState {
             },
         }
 
-        let mut copy_hash = None;
+        let mut copy = None;
         if let Some(id) = session.state.active()
             && session.git_state(id).is_some_and(|git| git.show_blame)
         {
@@ -159,7 +157,7 @@ impl InspectorState {
                     }
                     ui.same_line();
                     if ui.small_button("Copy hash") {
-                        copy_hash = Some(commit.hash);
+                        copy = Some(commit.hash);
                     }
                 },
                 Some(Detail::Boundary) => {
@@ -184,50 +182,98 @@ impl InspectorState {
         self.filter.draw(ui);
 
         let _identical_frames = (self.scope == EditScope::Identical).then(|| identical_frame_colors(ui));
-        let (pinned, variables) = split_pinned(&snapshot.variables, pins);
-        let is_top_shown = self.shows_properties(&snapshot)
-            || pinned
-                .iter()
-                .any(|variable| self.filter.shows(variable.name.as_str(), variable.overridden));
-        if is_top_shown {
-            property_table(ui, "inspector-properties", |ui| {
-                draw_variable_rows(ui, session, self, pins, &pinned);
-                if snapshot.is_atom {
-                    self.draw_transform(ui, session, &snapshot);
-                    self.draw_display(ui, session, &snapshot);
-                }
-            });
-        }
-
+        let (pinned, variables) = split_pinned(&snapshot.variables, pinned_vars);
         let mut open_source = None;
-        let mut is_any_shown = is_top_shown;
-        for (index, group) in snapshot.groups.iter().enumerate() {
-            let rows = variables
-                .iter()
-                .copied()
-                .filter(|variable| {
-                    variable.owner == group.owner && self.filter.shows(variable.name.as_str(), variable.overridden)
-                })
-                .collect::<Vec<_>>();
-            if index > 0 && rows.is_empty() {
-                continue;
-            }
+        let mut is_drawn = false;
+        let mut is_any_shown = false;
+        for section in inspector_sections(&snapshot.groups, pinned_types) {
+            match section {
+                InspectorSection::PinnedVariables => {
+                    let is_shown = pinned
+                        .iter()
+                        .any(|variable| self.filter.shows(variable.name.as_str(), variable.overridden));
+                    if !is_shown {
+                        continue;
+                    }
 
-            if index > 0 || is_top_shown {
-                ui.separator();
-            }
+                    if is_drawn {
+                        ui.separator();
+                    }
 
-            match &group.source {
-                Some(source) if ui.text_link(&group.path) => open_source = Some(source.clone()),
-                Some(_) => {},
-                None => ui.text_wrapped(&group.path),
-            }
+                    property_table(ui, "inspector-pinned", |ui| {
+                        draw_variable_rows(ui, session, self, pinned_vars, &pinned);
+                    });
+                    is_drawn = true;
+                    is_any_shown = true;
+                },
+                InspectorSection::Properties => {
+                    if !self.shows_properties(&snapshot) {
+                        continue;
+                    }
 
-            if !rows.is_empty() {
-                property_table(ui, "inspector-properties", |ui| {
-                    draw_variable_rows(ui, session, self, pins, &rows);
-                });
-                is_any_shown = true;
+                    if is_drawn {
+                        ui.separator();
+                    }
+
+                    property_table(ui, "inspector-properties", |ui| {
+                        self.draw_transform(ui, session, &snapshot);
+                        self.draw_display(ui, session, &snapshot);
+                    });
+                    is_drawn = true;
+                    is_any_shown = true;
+                },
+                InspectorSection::Group(index, group) => {
+                    let rows = variables
+                        .iter()
+                        .copied()
+                        .filter(|variable| {
+                            variable.owner == group.owner
+                                && self.filter.shows(variable.name.as_str(), variable.overridden)
+                        })
+                        .collect::<Vec<_>>();
+                    if index > 0 && rows.is_empty() {
+                        continue;
+                    }
+
+                    if is_drawn {
+                        ui.separator();
+                    }
+
+                    is_drawn = true;
+                    let is_pinnable = group.owner.is_some();
+                    let is_pinned = pinned_types.contains(&group.path);
+                    if is_pinnable {
+                        ui.align_text_to_frame_padding();
+                        if draw_pin(ui, is_pinned) {
+                            toggle_pin(pinned_types, &group.path);
+                        }
+
+                        ui.same_line();
+                    }
+
+                    match &group.source {
+                        Some(source) if ui.text_link(&group.path) => open_source = Some(source.clone()),
+                        Some(_) => {},
+                        None => ui.text_wrapped(&group.path),
+                    }
+
+                    if let Some(_popup) = ui.begin_popup_context_item_with_label(Some(&group.path)) {
+                        if is_pinnable && ui.menu_item(if is_pinned { "Unpin type" } else { "Pin type to the top" }) {
+                            toggle_pin(pinned_types, &group.path);
+                        }
+
+                        if ui.menu_item("Copy type path") {
+                            copy = Some(group.path.clone());
+                        }
+                    }
+
+                    if !rows.is_empty() {
+                        property_table(ui, "inspector-properties", |ui| {
+                            draw_variable_rows(ui, session, self, pinned_vars, &rows);
+                        });
+                        is_any_shown = true;
+                    }
+                },
             }
         }
 
@@ -238,7 +284,7 @@ impl InspectorState {
         InspectorOutput {
             open_source,
             find_similar,
-            copy_hash,
+            copy,
         }
     }
 
@@ -383,6 +429,32 @@ impl InspectorFilter {
         ui.same_line();
         ui.checkbox(label, &mut self.modified_only);
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub(super) enum InspectorSection<'a> {
+    PinnedVariables,
+    Properties,
+    Group(usize, &'a VariableGroup),
+}
+
+pub(super) fn inspector_sections<'a>(
+    groups: &'a [VariableGroup], pinned_types: &[String],
+) -> Vec<InspectorSection<'a>> {
+    let is_pinned = |group: &VariableGroup| group.owner.is_some() && pinned_types.contains(&group.path);
+    let pinned = pinned_types.iter().filter_map(|pin| {
+        groups
+            .iter()
+            .enumerate()
+            .find(|(_, group)| is_pinned(group) && &group.path == pin)
+    });
+    let rest = groups.iter().enumerate().filter(|(_, group)| !is_pinned(group));
+
+    pinned
+        .map(|(index, group)| InspectorSection::Group(index, group))
+        .chain([InspectorSection::PinnedVariables, InspectorSection::Properties])
+        .chain(rest.map(|(index, group)| InspectorSection::Group(index, group)))
+        .collect()
 }
 
 type SplitVariables<'a> = (Vec<&'a InspectorVariable>, Vec<&'a InspectorVariable>);

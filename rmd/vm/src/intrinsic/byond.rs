@@ -1388,21 +1388,11 @@ impl Evaluator<'_> {
     }
 
     /// The file behind an `/icon` datum, or the value itself
-    pub(crate) fn icon_file(&self, mut icon: GenericValue) -> GenericValue {
-        for _ in 0..8 {
-            let GenericValue::Object(id) = icon else {
-                break;
-            };
-            icon = self
-                .runtime
-                .heap
-                .object(id)
-                .and_then(|object| object.vars.get(&Identifier::from(vars::ICON)))
-                .cloned()
-                .unwrap_or_default();
+    pub(crate) fn icon_file(&self, icon: GenericValue) -> GenericValue {
+        match icon {
+            GenericValue::Object(id) => self.runtime.heap.icon_source(id).file.cloned().unwrap_or_default(),
+            value => value,
         }
-
-        icon
     }
 
     pub(crate) fn construct(

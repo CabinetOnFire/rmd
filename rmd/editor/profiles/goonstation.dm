@@ -341,6 +341,12 @@
 /atom/proc/demir_bake_icon()
 	UpdateIcon()
 
+// IN_MAP_EDITOR gives pipes and devices icon states that already draw them connected.
+// UpdateIcon() swaps in the runtime states and adds end caps for nodes the bake never links.
+// You win gooners.
+/obj/machinery/atmospherics/demir_bake_icon()
+	return
+
 // Runtime areas hide their mapping icon in update_icon().
 /area/demir_bake_icon()
 	return

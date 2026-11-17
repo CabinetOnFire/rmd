@@ -2587,10 +2587,16 @@ fn export_with_names(
         lighting,
         ..Default::default()
     };
+    let source = match object.vars.get(&names.icon) {
+        Some(GenericValue::Object(icon)) => Some(heap.icon_source(*icon)),
+        _ => None,
+    };
     for name in &names.appearance {
-        let runtime_value = match object.vars.get(name) {
-            Some(GenericValue::Object(icon)) if *name == names.icon => icon_file(heap, *icon, &names.icon),
-            value => value,
+        let runtime_value = match &source {
+            Some(source) if *name == names.icon => source.file,
+            Some(source) if *name == names.icon_state && source.icon_state.is_some() => source.icon_state,
+            Some(source) if *name == names.dir && source.dir.is_some() => source.dir,
+            _ => object.vars.get(name),
         };
         let value = if name.as_str() == vars::COLOR && matches!(runtime_value, Some(GenericValue::List(_))) {
             None
@@ -2689,18 +2695,6 @@ fn hash_constant(value: &Value, hasher: &mut DefaultHasher) {
             }
         },
     }
-}
-
-/// `icon = icon('x.dmi', "state")` draws from the file the `/icon` wraps
-fn icon_file<'a>(heap: &'a crate::heap::Heap, mut id: ObjectId, icon: &Identifier) -> Option<&'a GenericValue> {
-    for _ in 0..8 {
-        match heap.object(id)?.vars.get(icon)? {
-            GenericValue::Object(inner) => id = *inner,
-            value => return Some(value),
-        }
-    }
-
-    None
 }
 
 fn export_value(value: &GenericValue) -> Result<Value, FaultKind> {

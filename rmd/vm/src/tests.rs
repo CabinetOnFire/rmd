@@ -2056,6 +2056,60 @@ fn baking_exports_icon_objects_and_ignores_timed_effects() {
 }
 
 #[test]
+fn baking_draws_the_state_and_dir_an_icon_object_kept() {
+    let (tree, module) = compile(fixture!(
+        "programs/baking_draws_the_state_and_dir_an_icon_object_kept.dm"
+    ));
+    let pipe = tree.id_of(&TreePath::parse("/obj/pipe")).expect("pipe type");
+    let bake = Bake::new(
+        &tree,
+        &module,
+        vec![Atom {
+            instance: 1,
+            ty: pipe,
+            position: Position::new(1, 1, 1),
+            vars: Vec::new(),
+        }],
+        [1, 1, 1],
+        Limits::default(),
+        IconStates::default(),
+    );
+
+    assert_eq!(bake.diagnostics.count(), 0, "{:?}", bake.diagnostics);
+    let overlays = &bake.appearances[&1].overlays;
+    let drawn = overlays
+        .iter()
+        .map(|overlay| {
+            let var = |name: &str| {
+                overlay
+                    .vars
+                    .iter()
+                    .find(|(key, _)| key.as_str() == name)
+                    .map(|(_, value)| value.clone())
+            };
+            (var("icon"), var("icon_state"), var("dir"))
+        })
+        .collect::<Vec<_>>();
+    let file = Some(Value::Resource("pipe.dmi".into()));
+    assert_eq!(
+        drawn,
+        [
+            (
+                file.clone(),
+                Some(Value::Text("ends_intact".into())),
+                Some(Value::Num(4.0))
+            ),
+            (
+                file.clone(),
+                Some(Value::Text("ends_exposed".into())),
+                Some(Value::Num(8.0))
+            ),
+            (file, Some(Value::Text("normal".into())), Some(Value::Num(2.0))),
+        ]
+    );
+}
+
+#[test]
 fn baking_exports_icon_and_icon_state_as_a_pair() {
     let (tree, module) = compile(fixture!("programs/baking_exports_icon_and_icon_state_as_a_pair.dm"));
     let state_only = tree

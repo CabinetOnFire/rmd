@@ -77,10 +77,7 @@ impl Evaluator<'_> {
                 key
             };
 
-            if key.as_str() == vars::ICON && self.is_icon_datum(&value) {
-                let file = self.icon_file(value);
-                self.write_field(GenericValue::Object(id), key, file)?;
-            } else if key.as_str() == vars::ICON && matches!(value, GenericValue::Object(_)) {
+            if key.as_str() == vars::ICON && matches!(value, GenericValue::Object(_)) && !self.is_icon_datum(&value) {
                 self.write_field(GenericValue::Object(id), vars::APPEARANCE.into(), value)?;
             } else {
                 self.write_field(GenericValue::Object(id), key, value)?;
