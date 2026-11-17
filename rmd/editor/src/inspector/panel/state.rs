@@ -75,7 +75,7 @@ pub(super) struct ListEntryDraft {
 pub(crate) struct InspectorOutput {
     pub open_source: Option<SourceLocation>,
     pub find_similar: bool,
-    pub copy_hash: Option<String>,
+    pub copy: Option<String>,
 }
 
 impl InspectorState {
@@ -123,7 +123,7 @@ impl InspectorState {
             },
         }
 
-        let mut copy_hash = None;
+        let mut copy = None;
         if let Some(id) = session.state.active()
             && session.git_state(id).is_some_and(|git| git.show_blame)
         {
@@ -159,7 +159,7 @@ impl InspectorState {
                     }
                     ui.same_line();
                     if ui.small_button("Copy hash") {
-                        copy_hash = Some(commit.hash);
+                        copy = Some(commit.hash);
                     }
                 },
                 Some(Detail::Boundary) => {
@@ -223,6 +223,12 @@ impl InspectorState {
                 None => ui.text_wrapped(&group.path),
             }
 
+            if let Some(_popup) = ui.begin_popup_context_item_with_label(Some(&group.path))
+                && ui.menu_item("Copy type path")
+            {
+                copy = Some(group.path.clone());
+            }
+
             if !rows.is_empty() {
                 property_table(ui, "inspector-properties", |ui| {
                     draw_variable_rows(ui, session, self, pins, &rows);
@@ -238,7 +244,7 @@ impl InspectorState {
         InspectorOutput {
             open_source,
             find_similar,
-            copy_hash,
+            copy,
         }
     }
 

@@ -69,7 +69,7 @@ pub(crate) struct InspectorPanel {
 pub(crate) struct InspectorPanelOutput {
     pub(crate) open_source: Option<SourceLocation>,
     pub(crate) find_similar: Option<(DocumentId, PrefabInstanceId)>,
-    pub(crate) copy_hash: Option<String>,
+    pub(crate) copy: Option<String>,
     pub(crate) docked: bool,
 }
 
@@ -118,7 +118,7 @@ impl InspectorPanel {
         InspectorPanelOutput {
             open_source: output.open_source,
             find_similar,
-            copy_hash: output.copy_hash,
+            copy: output.copy,
             docked,
         }
     }
