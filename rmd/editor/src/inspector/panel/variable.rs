@@ -379,7 +379,7 @@ fn draw_list_input(
     tree.pop();
 }
 
-fn draw_pin(ui: &Ui, pinned: bool) -> bool {
+pub(super) fn draw_pin(ui: &Ui, pinned: bool) -> bool {
     if pinned {
         ui.text(ICON_PIN.to_string());
     } else {
@@ -392,7 +392,7 @@ fn draw_pin(ui: &Ui, pinned: bool) -> bool {
     clicked
 }
 
-fn toggle_pin(pins: &mut Vec<String>, name: &str) {
+pub(super) fn toggle_pin(pins: &mut Vec<String>, name: &str) {
     if let Some(index) = pins.iter().position(|pin| pin == name) {
         pins.remove(index);
     } else {

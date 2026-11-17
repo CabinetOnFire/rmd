@@ -15,10 +15,12 @@ use super::{
     direction::{direction_choices, selected_direction},
     property::{commit_int_property, format_color},
     snapshot::{
-        InspectorVariable, inspector_snapshot, inspector_variables, list_entry_drafts, parse_list_entries,
-        property_snapshot, variable_groups,
+        InspectorVariable, VariableGroup, inspector_snapshot, inspector_variables, list_entry_drafts,
+        parse_list_entries, property_snapshot, variable_groups,
     },
-    state::{EditorMode, InspectorFilter, ListEntryDraft, VariableDraft, split_pinned},
+    state::{
+        EditorMode, InspectorFilter, InspectorSection, ListEntryDraft, VariableDraft, inspector_sections, split_pinned,
+    },
     variable::{VariableWidget, editor_mode, type_label, variable_widget},
 };
 
@@ -96,6 +98,32 @@ fn a_filtered_panel_with_pins_draws_every_filter_state() {
     }
 
     assert_eq!(settings.pinned_vars, ["desc", "missing"]);
+}
+
+#[test]
+fn pinned_type_groups_draw_above_pinned_variables() {
+    let _guard = ui::testing::CONTEXT_LOCK.lock().unwrap();
+    let mut context = ui::testing::rectangle_context();
+    let (mut session, _) = two_tables();
+    let mut settings = Settings {
+        pinned_vars: vec![String::from("desc")],
+        pinned_types: vec![
+            String::from("/atom"),
+            String::from("/obj/structure/table"),
+            String::from("/missing"),
+        ],
+        ..Settings::default()
+    };
+    let mut panel = InspectorPanel::new().unwrap();
+
+    for query in ["", "nothing matches"] {
+        panel.state.filter.query = String::from(query);
+        let ui = context.frame();
+        panel.draw(ui, &mut session, &mut settings, false, &mut true);
+        assert!(context.render_legacy().valid());
+    }
+
+    assert_eq!(settings.pinned_types, ["/atom", "/obj/structure/table", "/missing"]);
 }
 
 #[test]
@@ -397,6 +425,49 @@ fn pinned_variables_leave_the_list_in_pin_order() {
 
     assert_eq!(names(pinned), ["density", "req_access"]);
     assert_eq!(names(rest), ["anchored", "dir"]);
+}
+
+#[test]
+fn pinned_types_order_sections_by_pin_and_skip_undeclared() {
+    let group = |owner: Option<u32>, path: &str| VariableGroup {
+        owner: owner.map(TypeId),
+        path: String::from(path),
+        source: None,
+    };
+    let groups = [
+        group(Some(3), "/obj/item/sub"),
+        group(Some(2), "/obj/item"),
+        group(Some(1), "/obj"),
+        group(None, "Undeclared"),
+    ];
+    let pins = [
+        String::from("/obj"),
+        String::from("/missing"),
+        String::from("/obj/item/sub"),
+        String::from("Undeclared"),
+    ];
+
+    let order = inspector_sections(&groups, &pins)
+        .into_iter()
+        .map(|section| match section {
+            InspectorSection::PinnedVariables => (None, "pinned variables"),
+            InspectorSection::Properties => (None, "properties"),
+            InspectorSection::Group(index, group) => (Some(index), group.path.as_str()),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        order,
+        [
+            (Some(2), "/obj"),
+            (Some(0), "/obj/item/sub"),
+            (None, "pinned variables"),
+            (None, "properties"),
+            (Some(1), "/obj/item"),
+            (Some(3), "Undeclared"),
+        ]
+    );
+
+    assert_eq!(inspector_sections(&groups, &[])[0], InspectorSection::PinnedVariables);
 }
 
 #[test]

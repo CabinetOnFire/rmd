@@ -107,7 +107,9 @@ impl InspectorPanel {
             if settings.focus_windows_on_hover {
                 focus_window_on_hover(ui);
             }
-            output = self.state.draw(ui, session, &mut settings.pinned_vars);
+            output = self
+                .state
+                .draw(ui, session, &mut settings.pinned_vars, &mut settings.pinned_types);
         });
         let find_similar = output
             .find_similar
